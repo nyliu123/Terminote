@@ -1,0 +1,17 @@
+# Compiler and linker output
+/build/
+*.o
+*.obj
+*.d
+*.exe
+
+# Runtime logs
+/logs/*.log
+!/logs/.gitkeep
+/temp/
+
+# Editor and operating-system files
+*.swp
+*.tmp
+.DS_Store
+Thumbs.db
