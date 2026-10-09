@@ -1,4 +1,5 @@
 ﻿#include "common.h"
+#include "win_text.h"
 #include "row.h"
 #include "undo.h"
 #include "output.h"
@@ -263,17 +264,9 @@ void editorCutSelection(void) {
     int len;
     char *sel = editorGetSelectedText(&len);
     if (sel && len > 0) {
-        if (OpenClipboard(NULL)) {
-            EmptyClipboard();
-            HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, len + 1);
-            if (hMem) {
-                char *p = (char *)GlobalLock(hMem);
-                memcpy(p, sel, len);
-                p[len] = '\0';
-                GlobalUnlock(hMem);
-                SetClipboardData(CF_TEXT, hMem);
-            }
-            CloseClipboard();
+        if (!editorWriteClipboardText(sel)) {
+            free(sel);
+            return;
         }
         free(sel);
         editorSetStatusMessage("%s", L("selection.cut"));

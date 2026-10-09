@@ -38,7 +38,7 @@ void editorFind(void) {
     char prompt[128];
     snprintf(prompt, sizeof(prompt), L("find.prompt"),
              editorBindingLabel(ACTION_INSERT_NEWLINE));
-    char *query = editorSearchPrompt(prompt, NULL);
+    char *query = editorSearchSelectionPrompt(prompt, NULL);
     if (!query || !query[0]) {
         free(query);
         restoreView(&initial);

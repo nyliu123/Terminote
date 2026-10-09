@@ -11,11 +11,12 @@
 #include "search.h"
 #include "localization.h"
 
-static char *replacePrompt(const char *label) {
+static char *replacePrompt(const char *label, int use_selection) {
     char prompt[128];
     snprintf(prompt, sizeof(prompt), L("replace.prompt"), label,
              editorBindingLabel(ACTION_INSERT_NEWLINE));
-    return editorSearchPrompt(prompt, NULL);
+    return use_selection ? editorSearchSelectionPrompt(prompt, NULL)
+                         : editorSearchPrompt(prompt, NULL);
 }
 
 static int confirmReplacement(struct searchResults *results, int *index,
@@ -70,7 +71,11 @@ static void replaceOne(const struct findMatch *match, int query_length,
     erow *row = &E.row[match->row];
 
     undo_suspended++;
-    for (int i = 0; i < query_length; i++) editorRowDelChar(row, match->col);
+    for (int removed = 0; removed < query_length;) {
+        int character_length = utf8_char_len((unsigned char)row->chars[match->col]);
+        editorRowDelChar(row, match->col);
+        removed += character_length;
+    }
     for (int i = 0; i < replacement_length; i++)
         editorRowInsertChar(row, match->col + i,
                             (unsigned char)replacement[i]);
@@ -85,7 +90,7 @@ static void replaceOne(const struct findMatch *match, int query_length,
 void editorReplace(void) {
     struct searchResults results = {0};
     E.search_active = 1;
-    char *query = replacePrompt(L("replace.find"));
+    char *query = replacePrompt(L("replace.find"), 1);
     if (!query || !query[0]) {
         free(query);
         E.search_active = 0;
@@ -102,7 +107,7 @@ void editorReplace(void) {
         return;
     }
 
-    char *replacement = replacePrompt(L("replace.with"));
+    char *replacement = replacePrompt(L("replace.with"), 0);
     if (!replacement) {
         editorSearchFree(&results);
         free(query);

@@ -1,4 +1,5 @@
 ﻿#include "common.h"
+#include "win_text.h"
 #include "row.h"
 #include "output.h"
 #include "file.h"
@@ -44,7 +45,7 @@ void editorOpen(const char *filename) {
     E.save_failed = 0;
     editorSelectLanguageForFile(E.filename);
 
-    FILE *fp = fopen(E.filename, "rb");
+    FILE *fp = editorFopenUtf8(E.filename, "rb");
     if (!fp) return;
 
     /* read entire file into memory */
@@ -101,30 +102,37 @@ void editorOpen(const char *filename) {
 }
 
 static char *editorChooseSavePath(void) {
-    char selected[32768] = "";
+    wchar_t selected[32768] = L"";
     char title[MAX_PATH + 32];
     if (E.filename) {
-        size_t length = strlen(E.filename);
-        if (length >= sizeof(selected)) {
+        wchar_t *wide = editorUtf8ToWide(E.filename);
+        if (!wide) return NULL;
+        size_t length = wcslen(wide);
+        if (length >= sizeof(selected) / sizeof(*selected)) {
+            free(wide);
             editorSetStatusMessage("%s", L("file.save_path_long"));
             return NULL;
         }
-        memcpy(selected, E.filename, length + 1);
+        memcpy(selected, wide, (length + 1) * sizeof(*wide));
+        free(wide);
     }
 
-    OPENFILENAMEA dialog;
+    OPENFILENAMEW dialog;
     memset(&dialog, 0, sizeof(dialog));
     dialog.lStructSize = sizeof(dialog);
     dialog.hwndOwner = GetConsoleWindow();
-    dialog.lpstrFilter = "Any file (*.*)\0*.*\0\0";
+    dialog.lpstrFilter = L"Any file (*.*)\0*.*\0\0";
     dialog.lpstrFile = selected;
-    dialog.nMaxFile = sizeof(selected);
+    dialog.nMaxFile = sizeof(selected) / sizeof(*selected);
     snprintf(title, sizeof(title), "%s - Save file", brandTitleName());
-    dialog.lpstrTitle = title;
+    wchar_t *wide_title = editorUtf8ToWide(title);
+    dialog.lpstrTitle = wide_title;
     dialog.Flags = OFN_EXPLORER | OFN_NOCHANGEDIR | OFN_PATHMUSTEXIST |
                    OFN_OVERWRITEPROMPT;
 
-    if (!GetSaveFileNameA(&dialog)) {
+    BOOL accepted = GetSaveFileNameW(&dialog);
+    free(wide_title);
+    if (!accepted) {
         DWORD error = CommDlgExtendedError();
         if (error != 0)
             editorSetStatusMessage(L("file.save_dialog_failed"), error);
@@ -133,33 +141,40 @@ static char *editorChooseSavePath(void) {
         return NULL;
     }
 
-    char *absolute = editorAbsolutePath(selected);
+    char *selected_utf8 = editorWideToUtf8(selected);
+    char *absolute = selected_utf8 ? editorAbsolutePath(selected_utf8) : NULL;
+    free(selected_utf8);
     if (!absolute)
         editorSetStatusMessage("%s", L("file.save_path_failed"));
     return absolute;
 }
 
 char *editorChooseOpenPath(void) {
-    char selected[32768] = "";
+    wchar_t selected[32768] = L"";
     char title[MAX_PATH + 32];
-    OPENFILENAMEA dialog;
+    OPENFILENAMEW dialog;
     memset(&dialog, 0, sizeof(dialog));
     dialog.lStructSize = sizeof(dialog);
     dialog.hwndOwner = GetConsoleWindow();
-    dialog.lpstrFilter = "Any file (*.*)\0*.*\0\0";
+    dialog.lpstrFilter = L"Any file (*.*)\0*.*\0\0";
     dialog.lpstrFile = selected;
-    dialog.nMaxFile = sizeof(selected);
+    dialog.nMaxFile = sizeof(selected) / sizeof(*selected);
     snprintf(title, sizeof(title), "%s - Open file", brandTitleName());
-    dialog.lpstrTitle = title;
+    wchar_t *wide_title = editorUtf8ToWide(title);
+    dialog.lpstrTitle = wide_title;
     dialog.Flags = OFN_EXPLORER | OFN_NOCHANGEDIR | OFN_FILEMUSTEXIST |
                    OFN_PATHMUSTEXIST;
-    if (!GetOpenFileNameA(&dialog)) {
+    BOOL accepted = GetOpenFileNameW(&dialog);
+    free(wide_title);
+    if (!accepted) {
         DWORD error = CommDlgExtendedError();
         if (error != 0)
             editorSetStatusMessage(L("file.open_dialog_failed"), error);
         return NULL;
     }
-    char *absolute = editorAbsolutePath(selected);
+    char *selected_utf8 = editorWideToUtf8(selected);
+    char *absolute = selected_utf8 ? editorAbsolutePath(selected_utf8) : NULL;
+    free(selected_utf8);
     if (!absolute) editorSetStatusMessage("%s", L("file.open_path_failed"));
     return absolute;
 }
@@ -170,7 +185,7 @@ int editorSaveAs(void) {
 
     int len;
     char *buf = editorRowsToString(&len);
-    FILE *fp = fopen(chosen_path, "wb");
+    FILE *fp = editorFopenUtf8(chosen_path, "wb");
     if (!fp) {
         free(buf);
         E.save_failed = 1;
@@ -208,7 +223,7 @@ int editorSave(void) {
 
     int  len;
     char *buf = editorRowsToString(&len);
-    FILE *fp  = fopen(target_path, "wb");
+    FILE *fp  = editorFopenUtf8(target_path, "wb");
 
     if (!fp) {
         free(buf);

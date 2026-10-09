@@ -5,13 +5,14 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 ## Build
 
 ```
-make          # incremental Debug build
+make          # incremental optimized Release build
+make debug    # incremental Debug build with debugging symbols
 make test     # build and run unit + startup smoke tests
 make release  # clean optimized build
 make clean    # delete build/ and terminote.exe
 ```
 
-Compiler: `gcc -std=c11 -static-libgcc -finput-charset=UTF-8 -fexec-charset=UTF-8 -Iinclude -Wall -Wextra`. Debug and Release object/dependency files are isolated under `build/debug/` and `build/release/`; source files are UTF-8 and string literals are embedded as UTF-8 for the Windows console running code page 65001.
+Compiler: `gcc -std=c11 -static-libgcc -finput-charset=UTF-8 -fexec-charset=UTF-8 -Iinclude -Wall -Wextra`. Debug and Release object/dependency files are isolated under `build/debug/` and `build/release/`; test executables are isolated under `build/tests/<mode>/` and retain assertions in both modes. Release uses `-Os`, LTO, unused-section removal, and stripped symbols. Source files are UTF-8 and string literals are embedded as UTF-8 for the Windows console running code page 65001.
 
 ## Architecture
 

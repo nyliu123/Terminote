@@ -15,6 +15,16 @@
 #include "localization.h"
 #include "restart.h"
 #include "brand.h"
+#include "win_text.h"
+#include <shellapi.h>
+
+static char **utf8_arguments;
+static int utf8_argument_count;
+
+static void freeUtf8Arguments(void) {
+    for (int i = 0; i < utf8_argument_count; i++) free(utf8_arguments[i]);
+    free(utf8_arguments);
+}
 
 void initEditor(void) {
     E.cx = 0; E.cy = 0; E.rx = 0;
@@ -103,6 +113,19 @@ static void editorContinueMouseAutoScroll(void) {
 }
 
 int main(int argc, char *argv[]) {
+    /* CRT narrow argv uses the system ANSI code page, not the console CP. */
+    wchar_t **wide_arguments = CommandLineToArgvW(GetCommandLineW(), &argc);
+    if (!wide_arguments) return 1;
+    utf8_arguments = calloc(argc, sizeof(*utf8_arguments));
+    if (!utf8_arguments) { LocalFree(wide_arguments); return 1; }
+    utf8_argument_count = argc;
+    atexit(freeUtf8Arguments);
+    for (int i = 0; i < argc; i++) {
+        utf8_arguments[i] = editorWideToUtf8(wide_arguments[i]);
+        if (!utf8_arguments[i]) { LocalFree(wide_arguments); return 1; }
+    }
+    LocalFree(wide_arguments);
+    argv = utf8_arguments;
     struct cliOptions options;
     char cli_error[256];
     char *config_file = NULL;

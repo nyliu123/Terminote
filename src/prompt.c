@@ -1,4 +1,5 @@
 ﻿#include "common.h"
+#include "win_text.h"
 #include "terminal.h"
 #include "row.h"
 #include "output.h"
@@ -10,10 +11,10 @@ static int promptDisplayWidth(const char *text, int byte_count) {
     int width = 0;
     int at = 0;
     while (at < byte_count && text[at]) {
-        unsigned char byte = (unsigned char)text[at];
-        int length = utf8_seq_len(byte);
-        if (at + length > byte_count) length = byte_count - at;
-        width += byte < 0x80 ? 1 : 2;
+        int length;
+        int columns = utf8_terminal_char_width(text + at, &length);
+        if (at + length > byte_count) break;
+        width += columns;
         at += length;
     }
     return width;
@@ -33,9 +34,8 @@ static int promptBytePositionAtColumn(const char *text, int length,
     if (target_column <= 0) return 0;
 
     while (byte_pos < length) {
-        unsigned char byte = (unsigned char)text[byte_pos];
-        int char_len = utf8_seq_len(byte);
-        int char_width = byte < 0x80 ? 1 : 2;
+        int char_len;
+        int char_width = utf8_terminal_char_width(text + byte_pos, &char_len);
         if (byte_pos + char_len > length) char_len = length - byte_pos;
         if (target_column < column + char_width) break;
         column += char_width;
@@ -114,6 +114,19 @@ static int promptEdit(struct promptBuffer *input, int key) {
     return 1;
 }
 
+static void promptRefresh(const char *prompt, const struct promptBuffer *input) {
+    editorRefreshScreen();
+    int column = promptPrefixWidth(prompt) +
+                 promptDisplayWidth(input->text, input->cursor) + 1;
+    if (column > E.screencols) column = E.screencols;
+    if (column < 1) column = 1;
+    char sequence[32];
+    int length = snprintf(sequence, sizeof(sequence), "\x1b[%d;%dH\x1b[?25h",
+                          E.screenrows + 2, column);
+    DWORD written;
+    WriteConsoleA(E.hout, sequence, (DWORD)length, &written, NULL);
+}
+
 static char *finishPrompt(struct promptBuffer *input,
                           void (*callback)(char *, int), int action,
                           int accept) {
@@ -127,15 +140,19 @@ static char *finishPrompt(struct promptBuffer *input,
 
 /* ---- prompt / input line ---- */
 static char *editorPromptImpl(char *prompt, void (*callback)(char *, int),
-                              int cancel_on_outside_click) {
+                              int cancel_on_outside_click, const char *initial) {
     struct promptBuffer input;
     promptBufferInit(&input);
+    if (initial) {
+        /* Search operates within a row, so seed it with the first selected line. */
+        for (int i = 0; initial[i] && initial[i] != '\r' && initial[i] != '\n'; i++)
+            promptInsert(&input, (unsigned char)initial[i]);
+    }
     E.prompt_active = 1;
 
     /* draw initial prompt before waiting for first keypress */
     editorSetStatusMessage(prompt, input.text);
-    editorRefreshScreen();
-    { DWORD w; WriteConsoleA(E.hout, "\x1b[?25l", 6, &w, NULL); }
+    promptRefresh(prompt, &input);
 
     while (1) {
         int c = editorReadKey();
@@ -144,6 +161,21 @@ static char *editorPromptImpl(char *prompt, void (*callback)(char *, int),
         if (promptEdit(&input, c)) {
             /* Text editing is complete; callback and redraw happen below. */
         } else switch (c) {
+        case ACTION_PASTE:
+        case PASTE_EVENT: {
+            int length;
+            char *text = c == PASTE_EVENT ? editorTakePendingPaste(&length)
+                                         : editorReadClipboardText(&length);
+            if (text) {
+                for (int i = 0; i < length; i++) {
+                    unsigned char byte = (unsigned char)text[i];
+                    /* Prompts are a single line; retain complete UTF-8 text. */
+                    if (byte >= 32 && byte != 127) promptInsert(&input, byte);
+                }
+                free(text);
+            }
+            break;
+        }
         case ACTION_PAGE_UP:
         case ACTION_PAGE_DOWN:
             editorHandleModalViewInput(c, 0);
@@ -202,32 +234,22 @@ static char *editorPromptImpl(char *prompt, void (*callback)(char *, int),
         if (!E.statusmsg_dirty)
             editorSetStatusMessage(prompt, input.text);
 
-        editorRefreshScreen();
-
-        /* cursor visibility after refresh */
-        {
-            if (input.length == 0) {
-                DWORD w;
-                WriteConsoleA(E.hout, "\x1b[?25l", 6, &w, NULL);
-            } else {
-                DWORD w;
-                WriteConsoleA(E.hout, "\x1b[?25h", 6, &w, NULL);
-                int prefix_width = promptPrefixWidth(prompt);
-                int cursor_width = promptDisplayWidth(input.text, input.cursor);
-                char  cur_buf[32];
-                snprintf(cur_buf, sizeof(cur_buf), "\x1b[%d;%dH",
-                         E.screenrows + 2,
-                         prefix_width + cursor_width + 1);
-                WriteConsoleA(E.hout, cur_buf, (int)strlen(cur_buf), &w, NULL);
-            }
-        }
+        promptRefresh(prompt, &input);
     }
 }
 
 char *editorPrompt(char *prompt, void (*callback)(char *, int)) {
-    return editorPromptImpl(prompt, callback, 0);
+    return editorPromptImpl(prompt, callback, 0, NULL);
 }
 
 char *editorSearchPrompt(char *prompt, void (*callback)(char *, int)) {
-    return editorPromptImpl(prompt, callback, 1);
+    return editorPromptImpl(prompt, callback, 1, NULL);
+}
+
+char *editorSearchSelectionPrompt(char *prompt, void (*callback)(char *, int)) {
+    int length;
+    char *selected = editorGetSelectedText(&length);
+    char *result = editorPromptImpl(prompt, callback, 1, selected);
+    free(selected);
+    return result;
 }

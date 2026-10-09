@@ -1,4 +1,5 @@
 #include "common.h"
+#include "win_text.h"
 #include "paths.h"
 
 int editorExecutableDirectory(char *directory, size_t size) {
@@ -23,15 +24,15 @@ int editorExecutablePath(const char *relative, char *path, size_t size) {
 char *editorAbsolutePath(const char *path) {
     if (!path || !path[0]) return NULL;
 
-    DWORD required = GetFullPathNameA(path, 0, NULL, NULL);
-    if (required == 0) return NULL;
-
-    char *absolute = malloc(required);
+    wchar_t *wide = editorUtf8ToWide(path);
+    if (!wide) return NULL;
+    DWORD required = GetFullPathNameW(wide, 0, NULL, NULL);
+    if (!required) { free(wide); return NULL; }
+    wchar_t *absolute = malloc(required * sizeof(*absolute));
     if (!absolute) die("malloc: absolute path");
-    DWORD length = GetFullPathNameA(path, required, absolute, NULL);
-    if (length == 0 || length >= required) {
-        free(absolute);
-        return NULL;
-    }
-    return absolute;
+    DWORD length = GetFullPathNameW(wide, required, absolute, NULL);
+    free(wide);
+    char *result = length && length < required ? editorWideToUtf8(absolute) : NULL;
+    free(absolute);
+    return result;
 }

@@ -1,4 +1,5 @@
 #include "common.h"
+#include "win_text.h"
 #include "tabs.h"
 #include "row.h"
 #include "output.h"
@@ -282,7 +283,7 @@ static int writeRestartSnapshot(const struct editorDocument *doc,
 
 static const char *restartDocumentState(const struct editorDocument *doc) {
     if (!doc->filename ||
-        GetFileAttributesA(doc->filename) == INVALID_FILE_ATTRIBUTES)
+        editorFileAttributesUtf8(doc->filename) == INVALID_FILE_ATTRIBUTES)
         return "new";
     return doc->dirty ? "modified" : "saved";
 }
@@ -350,7 +351,7 @@ static int restoreRestartTab(const char *state, int dirty,
     if ((strcmp(state, "saved") == 0 && (!original[0] || dirty != 0)) ||
         (strcmp(state, "modified") == 0 && (!original[0] || dirty == 0)))
         return 0;
-    DWORD attributes = GetFileAttributesA(snapshot);
+    DWORD attributes = editorFileAttributesUtf8(snapshot);
     if (attributes == INVALID_FILE_ATTRIBUTES ||
         (attributes & FILE_ATTRIBUTE_DIRECTORY))
         return 0;

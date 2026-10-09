@@ -162,7 +162,7 @@ void editorRefreshScreen(void) {
     editorDrawTabDropdown();
     editorDrawSettingsPopup();
 
-    if (E.numrows > 0 && !editorTabDropdownOpen() && !editorSettingsOpen()) {
+    if (!editorTabDropdownOpen() && !editorSettingsOpen()) {
         int screen_y = E.cy - E.rowoff + 2;
         int cursor_x = E.rx - E.coloff + E.linenum_width + 2;
         if (cursor_x < E.linenum_width + 2)

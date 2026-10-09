@@ -1,4 +1,5 @@
 #include "common.h"
+#include "win_text.h"
 #include "terminal.h"
 #include "undo.h"
 #include "output.h"
@@ -64,26 +65,6 @@ static int editorApplyAtomicPaste(char *text, int length) {
     return character_count;
 }
 
-static char *editorReadClipboardText(int *length) {
-    char *text = NULL;
-    *length = 0;
-    if (!OpenClipboard(NULL)) return NULL;
-
-    HANDLE data = GetClipboardData(CF_TEXT);
-    if (data) {
-        char *source = (char *)GlobalLock(data);
-        if (source) {
-            *length = (int)strlen(source);
-            text = malloc(*length + 1);
-            if (!text) die("malloc: clipboard text");
-            memcpy(text, source, *length + 1);
-            GlobalUnlock(data);
-        }
-    }
-    CloseClipboard();
-    return text;
-}
-
 static void editorCopySelection(void) {
     int length;
     char *selection = editorGetSelectedText(&length);
@@ -93,17 +74,9 @@ static void editorCopySelection(void) {
         return;
     }
 
-    if (OpenClipboard(NULL)) {
-        EmptyClipboard();
-        HGLOBAL memory = GlobalAlloc(GMEM_MOVEABLE, length + 1);
-        if (memory) {
-            char *target = (char *)GlobalLock(memory);
-            memcpy(target, selection, length);
-            target[length] = '\0';
-            GlobalUnlock(memory);
-            SetClipboardData(CF_TEXT, memory);
-        }
-        CloseClipboard();
+    if (!editorWriteClipboardText(selection)) {
+        free(selection);
+        return;
     }
     editorSetStatusMessage("%s", L("selection.copied"));
     editorSetEvent(L("selection.copied_count"), length);

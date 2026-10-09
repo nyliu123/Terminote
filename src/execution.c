@@ -1,4 +1,5 @@
 #include "common.h"
+#include "win_text.h"
 #include "execution.h"
 #include "file.h"
 #include "output.h"
@@ -155,7 +156,7 @@ void editorRunCurrentFile(void) {
         editorSetStatusMessage("%s", L("run.save_first"));
         return;
     }
-    if ((E.dirty || GetFileAttributesA(E.filename) == INVALID_FILE_ATTRIBUTES) &&
+    if ((E.dirty || editorFileAttributesUtf8(E.filename) == INVALID_FILE_ATTRIBUTES) &&
         !editorSave()) return;
 
     const char *filename = strrchr(E.filename, '\\');
@@ -198,14 +199,16 @@ void editorRunCurrentFile(void) {
     if (!command_line) die("malloc: command line");
     snprintf(command_line, line_length, "cmd.exe /d /s /c \"%s\"", expanded);
 
-    STARTUPINFOA startup;
+    STARTUPINFOW startup;
     PROCESS_INFORMATION process;
     memset(&startup, 0, sizeof(startup));
     memset(&process, 0, sizeof(process));
     startup.cb = sizeof(startup);
-    BOOL started = CreateProcessA(NULL, command_line, NULL, NULL, FALSE,
-                                  CREATE_NEW_CONSOLE, NULL, dir,
-                                  &startup, &process);
+    wchar_t *wide_command = editorUtf8ToWide(command_line);
+    wchar_t *wide_dir = editorUtf8ToWide(dir);
+    BOOL started = wide_command && wide_dir &&
+        CreateProcessW(NULL, wide_command, NULL, NULL, FALSE,
+                       CREATE_NEW_CONSOLE, NULL, wide_dir, &startup, &process);
     if (started) {
         CloseHandle(process.hThread);
         CloseHandle(process.hProcess);
@@ -214,5 +217,6 @@ void editorRunCurrentFile(void) {
     } else {
         editorSetStatusMessage(L("run.failed"), GetLastError());
     }
+    free(wide_command); free(wide_dir);
     free(command_line); free(expanded); free(name_no_ext); free(stem); free(dir);
 }
